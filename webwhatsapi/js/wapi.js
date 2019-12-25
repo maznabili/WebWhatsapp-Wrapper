@@ -13,7 +13,6 @@ if (!window.Store) {
             let neededObjects = [
                 { id: "Store", conditions: (module) => (module.Chat && module.Msg) ? module : null },
                 { id: "MediaCollection", conditions: (module) => (module.default && module.default.prototype && module.default.prototype.processFiles !== undefined) ? module.default : null },
-                { id: "ChatClass", conditions: (module) => (module.default && module.default.prototype && module.default.prototype.Collection !== undefined && module.default.prototype.Collection === "Chat") ? module : null },
                 { id: "MediaProcess", conditions: (module) => (module.BLOB) ? module : null },
                 { id: "Wap", conditions: (module) => (module.createGroup) ? module : null },
                 { id: "ServiceWorker", conditions: (module) => (module.default && module.default.killServiceWorker) ? module : null },
@@ -59,9 +58,9 @@ if (!window.Store) {
                                 window.Store[needObj.id] = needObj.foundedModule;
                             }
                         });
-                        window.Store.ChatClass.default.prototype.sendMessage = function (e) {
+                        window.Store.sendMessage = function (e) {
                             return window.Store.SendTextMsgToChat(this, ...arguments);
-                        }
+                        };
                         return window.Store;
                     }
                 }
@@ -285,12 +284,13 @@ window.WAPI.getAllGroups = function (done) {
 window.WAPI.getChat = function (id, done) {
     id = typeof id == "string" ? id : id._serialized;
     const found = window.Store.Chat.get(id);
+    found.sendMessage = (found.sendMessage) ? found.sendMessage : function () { return window.Store.sendMessage.apply(this, arguments); };
     if (done !== undefined) done(found);
     return found;
 }
 
 window.WAPI.getChatByName = function (name, done) {
-    const found = window.Store.Chat.find((chat) => chat.name === name);
+    const found = window.WAPI.getAllChats().find(val => val.name.includes(name))
     if (done !== undefined) done(found);
     return found;
 };
@@ -326,7 +326,7 @@ window.WAPI.sendImageFromDatabasePicBot = function (picId, chatId, caption) {
     return true;
 };
 
-window.WAPI.sendMessageWithThumb = function (thumb, url, title, description, chatId, done) {
+window.WAPI.sendMessageWithThumb = function (thumb, url, title, description, text, chatId, done) {
     var chatSend = WAPI.getChat(chatId);
     if (chatSend === undefined) {
         if (done !== undefined) done(false);
@@ -337,9 +337,13 @@ window.WAPI.sendMessageWithThumb = function (thumb, url, title, description, cha
         description : description,
         matchedText : url,
         title       : title,
-        thumbnail   : thumb
+        thumbnail   : thumb,
+        compose: true
     };
-    chatSend.sendMessage(url, { linkPreview: linkPreview, mentionedJidList: [], quotedMsg: null, quotedMsgAdminGroupJid: null });
+    chatSend.sendMessage(text, { linkPreview: linkPreview,
+                                mentionedJidList: [],
+                                quotedMsg: null,
+                                quotedMsgAdminGroupJid: null });
     if (done !== undefined) done(true);
     return true;
 };
@@ -1080,11 +1084,12 @@ window.WAPI.deleteMessage = function (chatId, messageArray, revoke=false, done) 
     if (!Array.isArray(messageArray)) {
         messageArray = [messageArray];
     }
-
+    let messagesToDelete = messageArray.map(msgId => window.Store.Msg.get(msgId));
+    
     if (revoke) {
-        conversation.sendRevokeMsgs(messageArray, conversation);    
+        conversation.sendRevokeMsgs(messagesToDelete, conversation);    
     } else {
-        conversation.sendDeleteMsgs(messageArray, conversation);    
+        conversation.sendDeleteMsgs(messagesToDelete, conversation);
     }
 
 
